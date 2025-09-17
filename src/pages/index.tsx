@@ -6,12 +6,29 @@ import { useAccount } from "wagmi";
 import ViemClient from "@/lib/viemClient";
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
+import alchemy from "@/lib/alchemyClient";
+import { AssetTransfersCategory, AssetTransfersResult } from "alchemy-sdk";
+import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
+
 const Home: NextPage = () => {
   const { address, chain } = useAccount();
   const [client, setClient] = useState<ViemClient | null>(
     new ViemClient(address)
   );
-  const [message, setMessage] = useState<string>("");
+  const [walletAddressToSearch, setWalletAddressToSearch] =
+    useState<string>("");
+
+  const [transactions, setTransactions] = useState<AssetTransfersResult[]>([]);
   // Initialize or update the ViemClient when the connected address changes
   useEffect(() => {
     // Update client with connected account
@@ -23,94 +40,20 @@ const Home: NextPage = () => {
     }
   }, [address, chain]);
 
-  // Example contract details (replace with your own)
-  const contractAddress = "0x6dfa800959236260e9b2d5ed24609f01825370cb";
-  const contractAbi = [
-    {
-      inputs: [],
-      name: "getMessage",
-      outputs: [
-        {
-          internalType: "string",
-          name: "",
-          type: "string",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "message",
-      outputs: [
-        {
-          internalType: "string",
-          name: "",
-          type: "string",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "string",
-          name: "newMessage",
-          type: "string",
-        },
-      ],
-      name: "setMessage",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-  ];
-
-  // Generic read transaction
-  const sendReadTransaction = async () => {
+  const searchTransactions = async () => {
     try {
-      if (!client) {
-        alert("Client not initialized");
-        return;
-      }
-      const result = await client.readContract({
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: "getMessage",
+      const transactions = await alchemy.core.getAssetTransfers({
+        fromAddress: walletAddressToSearch ?? address,
+        category: [AssetTransfersCategory.ERC20],
+        contractAddresses: ["0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"],
       });
-      console.log(result);
-      alert("Read result: " + result);
+
+      setTransactions(transactions.transfers);
     } catch (error) {
-      alert("Read error: " + error);
+      alert("Error fetching transactions: " + error);
     }
   };
 
-  // Generic write transaction
-  const sendWriteTransaction = async () => {
-    try {
-      // Example: set value to 42
-      if (!address) {
-        alert("No wallet connected");
-        return;
-      }
-
-      if (!client) {
-        alert("Client not initialized");
-        return;
-      }
-
-      const txHash = await client.writeContract({
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: "setMessage",
-        args: [message],
-      });
-      alert("Write tx sent: " + txHash);
-    } catch (error) {
-      alert("Write error: " + error);
-    }
-  };
   return (
     <div>
       <Head>
@@ -122,35 +65,84 @@ const Home: NextPage = () => {
         <div className="h-14 bg-[#2D2836] w-full p-2">
           <ConnectButton />
         </div>
-        <div className="flex flex-col flex-1 p-2 gap-2">
+        <div className="flex flex-col p-2 gap-2">
           <h1 className="text-white">React Web3 Template</h1>
-          <Button
+          {/* <Button
             className="w-122 cursor-pointer  hover:bg-purple-900"
             onClick={() => {
               sendReadTransaction();
             }}
           >
             Send Read Transaction
-          </Button>
+          </Button> */}
           <div className="flex gap-2">
             <Input
-              placeholder="Enter new message"
-              value={message}
+              placeholder="Enter wallet address"
+              value={walletAddressToSearch}
               onChange={(e) => {
                 e.preventDefault();
-                setMessage(e.target.value);
+                setWalletAddressToSearch(e.target.value);
               }}
               className="bg-gray-200 text-black w-60"
             />
             <Button
               className="w-60 cursor-pointer hover:bg-purple-900"
               onClick={() => {
-                sendWriteTransaction();
+                searchTransactions();
               }}
             >
-              Send Write Transaction
+              Search Address Transactions
             </Button>
           </div>
+        </div>
+        <div>
+          <Table>
+            <TableHeader>
+              <TableRow className=" bg-gray-200">
+                <TableHead className="w-[100px]">Tx Hash</TableHead>
+                <TableHead>From</TableHead>
+                <TableHead>To</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="bg-white">
+              {transactions.map((tx) => (
+                <TableRow key={tx.uniqueId}>
+                  <TableCell className="font-medium">
+                    {tx.hash.substring(0, 6) +
+                      "..." +
+                      tx.hash.substring(tx.hash.length - 4)}
+                  </TableCell>
+                  <TableCell>
+                    {tx.from.substring(0, 6) +
+                      "..." +
+                      tx.from.substring(tx.from.length - 4)}
+                  </TableCell>
+                  <TableCell>
+                    {tx.to
+                      ? tx.to.substring(0, 6) +
+                        "..." +
+                        tx.to.substring(tx.to.length - 4)
+                      : "N/A"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {Number(tx.value) / 10 ** 6} {tx.asset}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Link
+                      href={"https://etherscan.io/tx/" + tx.hash}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 underline"
+                    >
+                      <ExternalLink size={16} />
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       </main>
     </div>
